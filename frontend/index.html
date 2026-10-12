@@ -1,0 +1,304 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Library Management System</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f3f7f4;color:#20372c}
+header{background:#176b4d;color:white;padding:20px 6%;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+header h2{margin:0}
+button{border:0;border-radius:6px;padding:10px 14px;background:#176b4d;color:white;cursor:pointer;margin:3px}
+button:hover{background:#21865f}
+input,select{padding:10px;border:1px solid #ccd9d0;border-radius:6px;margin:5px 0;width:100%}
+.container{max-width:1200px;margin:25px auto;padding:0 18px}
+.card{background:white;padding:20px;border-radius:12px;box-shadow:0 3px 12px #0000000d;margin-bottom:18px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}
+.stat{background:white;padding:20px;border-radius:10px;border-left:4px solid #21865f}
+.stat h2{margin:8px 0;color:#176b4d}
+nav{display:flex;gap:5px;flex-wrap:wrap;padding:12px 6%;background:white;border-bottom:1px solid #ddd}
+nav button{background:#e6f2e9;color:#176b4d}
+nav button:hover{background:#cde7d5}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+table{border-collapse:collapse;width:100%;min-width:650px}
+th,td{text-align:left;padding:12px;border-bottom:1px solid #e4ebe6}
+th{background:#edf5ef}
+.tablebox{overflow-x:auto}
+.hidden{display:none!important}
+.notice{padding:12px;background:#fff3d7;border-radius:7px;margin:10px 0}
+small{color:#63766a}
+h1,h2,h3{color:#176b4d}
+#auth{max-width:430px;margin:60px auto;padding:25px}
+</style>
+</head>
+<body>
+
+<header>
+  <h2>📚 Smart Library Management System</h2>
+  <div id="userInfo"></div>
+</header>
+
+<section id="auth" class="card">
+  <h2 id="authHeading">Library Login</h2>
+  <form id="loginForm">
+    <input id="email" type="email" placeholder="Email address" required>
+    <input id="password" type="password" placeholder="Password" required>
+    <button type="submit">Login</button>
+  </form>
+  <hr>
+  <h3>Student Registration</h3>
+  <form id="registerForm">
+    <input id="regName" placeholder="Full name" required>
+    <input id="regEmail" type="email" placeholder="Email address" required>
+    <input id="regPassword" type="password" minlength="4" placeholder="Password" required>
+    <button type="submit">Register</button>
+  </form>
+  <div class="notice">
+    Demo Admin: admin@library.com / admin123<br>
+    Demo Librarian: librarian@library.com / lib123<br>
+    Demo Student: student@library.com / student123
+  </div>
+</section>
+
+<div id="system" class="hidden">
+<nav>
+  <button onclick="showPage('dashboard')">Dashboard</button>
+  <button onclick="showPage('books')">Books & Search</button>
+  <button onclick="showPage('transactions')">Issue / Return</button>
+  <button onclick="showPage('users')">Users</button>
+  <button onclick="showPage('reports')">Reports</button>
+  <button onclick="showPage('notifications')">Due Notifications</button>
+  <button onclick="showPage('profile')">My Profile</button>
+  <button onclick="logout()">Logout</button>
+</nav>
+<main class="container" id="content"></main>
+</div>
+
+<script>
+const KEY = "smartLibraryData";
+const today = () => new Date().toISOString().slice(0,10);
+const addDays = n => {
+  let d = new Date();
+  d.setDate(d.getDate()+n);
+  return d.toISOString().slice(0,10);
+};
+const makeId = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+let db, current = null;
+
+const initialData = {
+ users:[
+  {id:"admin",name:"Library Administrator",email:"admin@library.com",password:"admin123",role:"Admin"},
+  {id:"lib",name:"Library Librarian",email:"librarian@library.com",password:"lib123",role:"Librarian"},
+  {id:"student",name:"Demo Student",email:"student@library.com",password:"student123",role:"Student"}
+ ],
+ books:[
+  {id:"b1",title:"Database System Concepts",author:"Silberschatz",isbn:"9780078022159",category:"Computer Science",total:5,available:5},
+  {id:"b2",title:"Clean Code",author:"Robert C. Martin",isbn:"9780132350884",category:"Programming",total:3,available:3},
+  {id:"b3",title:"Operating System Concepts",author:"Silberschatz",isbn:"9781119800361",category:"Computer Science",total:4,available:4},
+  {id:"b4",title:"The Alchemist",author:"Paulo Coelho",isbn:"9780062315007",category:"Fiction",total:2,available:2}
+ ],
+ transactions:[], fines:[]
+};
+
+try {
+ db = JSON.parse(localStorage.getItem(KEY)) || initialData;
+} catch(e) { db = initialData; }
+
+function save(){localStorage.setItem(KEY,JSON.stringify(db))}
+function safe(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function book(id){return db.books.find(b=>b.id===id)}
+function user(id){return db.users.find(u=>u.id===id)}
+function staff(){return current && ["Admin","Librarian"].includes(current.role)}
+function fine(t){
+ if(t.returned || t.due>=today()) return 0;
+ return Math.floor((new Date(today())-new Date(t.due))/86400000)*10;
+}
+function message(s){alert(s)}
+
+document.getElementById("loginForm").onsubmit=e=>{
+ e.preventDefault();
+ const u=db.users.find(x=>x.email.toLowerCase()===email.value.trim().toLowerCase() && x.password===password.value);
+ if(!u){message("Invalid email or password.");return}
+ current=u;start();
+};
+document.getElementById("registerForm").onsubmit=e=>{
+ e.preventDefault();
+ const em=regEmail.value.trim().toLowerCase();
+ if(db.users.some(u=>u.email.toLowerCase()===em)){message("Email already registered.");return}
+ current={id:makeId(),name:regName.value.trim(),email:em,password:regPassword.value,role:"Student"};
+ db.users.push(current);save();start();message("Registration successful.");
+};
+function start(){
+ auth.classList.add("hidden");system.classList.remove("hidden");
+ userInfo.textContent=current.name+" ("+current.role+")";
+ showPage("dashboard");
+}
+function logout(){current=null;system.classList.add("hidden");auth.classList.remove("hidden")}
+function showPage(page){
+ if((page==="users"||page==="reports")&&!staff()){page="dashboard"}
+ const pages={dashboard,books:bookPage,transactions:transactionPage,users:usersPage,reports:reportsPage,notifications:notificationPage,profile:profilePage};
+ pages[page]();
+}
+function heading(title,subtitle){return `<h1>${title}</h1><p><small>${subtitle}</small></p>`}
+
+function dashboard(){
+ const copies=db.books.reduce((s,b)=>s+b.total,0);
+ const available=db.books.reduce((s,b)=>s+b.available,0);
+ const active=db.transactions.filter(t=>!t.returned);
+ const overdue=active.filter(t=>fine(t)>0).length;
+ content.innerHTML=heading("Dashboard","Library activity overview")+
+ `<div class="stats">
+ <div class="stat">Total book copies<h2>${copies}</h2></div>
+ <div class="stat">Available copies<h2>${available}</h2></div>
+ <div class="stat">Books issued<h2>${active.length}</h2></div>
+ <div class="stat">Overdue books<h2>${overdue}</h2></div>
+ </div><section class="card"><h3>Quick Actions</h3>
+ <button onclick="showPage('books')">Search Books</button>
+ <button onclick="showPage('transactions')">View Transactions</button>
+ ${staff()?'<button onclick="addBook()">Add Book</button><button onclick="showPage(\\'reports\\')">Generate Reports</button>':''}
+ </section>`;
+}
+
+function bookPage(){
+ content.innerHTML=heading("Book Catalogue","Search by title, author, ISBN or category")+
+ `<section class="card">
+ <input id="search" placeholder="Search books..." oninput="renderBooks()">
+ ${staff()?`<h3>Add / Update Book</h3>
+ <form id="bookForm" class="row">
+ <input name="title" placeholder="Book title" required>
+ <input name="author" placeholder="Author" required>
+ <input name="isbn" placeholder="ISBN" required>
+ <input name="category" placeholder="Category" required>
+ <input name="total" type="number" min="1" placeholder="Total copies" required>
+ <button type="submit">Save Book</button>
+ </form>`:""}
+ <div id="bookList" class="tablebox"></div></section>`;
+ if(staff())document.getElementById("bookForm").onsubmit=saveBook;
+ renderBooks();
+}
+function saveBook(e){
+ e.preventDefault();const f=new FormData(e.target);
+ const isbn=f.get("isbn").trim();
+ if(db.books.some(b=>b.isbn===isbn)){message("A book with this ISBN already exists.");return}
+ const total=Number(f.get("total"));
+ db.books.push({id:makeId(),title:f.get("title").trim(),author:f.get("author").trim(),isbn,category:f.get("category").trim(),total,available:total});
+ save();bookPage();message("Book added.");
+}
+function addBook(){showPage("books")}
+function renderBooks(){
+ const q=(document.getElementById("search")?.value||"").toLowerCase();
+ const list=db.books.filter(b=>(b.title+" "+b.author+" "+b.isbn+" "+b.category).toLowerCase().includes(q));
+ document.getElementById("bookList").innerHTML=`<table><thead><tr><th>Title</th><th>Author</th><th>ISBN</th><th>Category</th><th>Available</th><th>Action</th></tr></thead><tbody>`+
+ list.map(b=>`<tr><td>${safe(b.title)}</td><td>${safe(b.author)}</td><td>${safe(b.isbn)}</td><td>${safe(b.category)}</td><td>${b.available}/${b.total}</td><td>${b.available?`<button onclick="issueBook('${b.id}')">Issue</button>`:"Unavailable"} ${staff()?`<button onclick="editBook('${b.id}')">Edit</button><button onclick="deleteBook('${b.id}')">Delete</button>`:""}</td></tr>`).join("")+
+ `</tbody></table>`;
+}
+function editBook(id){
+ const b=book(id);if(!b)return;
+ const title=prompt("Book title:",b.title);if(title===null)return;
+ const author=prompt("Author:",b.author);if(author===null)return;
+ const category=prompt("Category:",b.category);if(category===null)return;
+ const total=Number(prompt("Total copies (must not be less than issued copies):",b.total));
+ if(!Number.isInteger(total)||total<(b.total-b.available)||total<1){message("Invalid total copies.");return}
+ b.title=title;b.author=author;b.category=category;b.available=total-(b.total-b.available);b.total=total;
+ save();bookPage();
+}
+function deleteBook(id){
+ if(!staff())return;
+ if(db.transactions.some(t=>t.bookId===id&&!t.returned)){message("Cannot delete a book while it is issued.");return}
+ if(confirm("Delete this book?")){db.books=db.books.filter(b=>b.id!==id);save();bookPage()}
+}
+function issueBook(bookId){
+ const b=book(bookId);if(!b||b.available<1){message("No copies available.");return}
+ let uid=current.id;
+ if(staff()){
+  const students=db.users.filter(u=>u.role==="Student");
+  if(!students.length){message("Register a student first.");return}
+  const choice=prompt("Enter student email:\n"+students.map(s=>s.email).join("\n"),students[0].email);
+  if(!choice)return;
+  const u=students.find(s=>s.email.toLowerCase()===choice.toLowerCase());
+  if(!u){message("Student not found.");return}uid=u.id;
+ }
+ if(db.transactions.filter(t=>t.userId===uid&&!t.returned).length>=3){message("Maximum 3 books per student.");return}
+ const due=prompt("Due date (YYYY-MM-DD):",addDays(14));
+ if(!due||due<today()){message("Enter a valid due date.");return}
+ b.available--;
+ db.transactions.push({id:makeId(),bookId,userId:uid,issue:today(),due,returned:false,finePaid:0});
+ save();message("Book issued successfully.");showPage("transactions");
+}
+function transactionPage(){
+ const list=db.transactions.filter(t=>staff()||t.userId===current.id).slice().reverse();
+ content.innerHTML=heading("Issue & Return","Fine is calculated at ₹10 per overdue day")+
+ `<section class="card"><div class="tablebox"><table><thead><tr><th>Book</th><th>Member</th><th>Issue Date</th><th>Due Date</th><th>Fine</th><th>Status</th><th>Action</th></tr></thead><tbody>`+
+ (list.map(t=>`<tr><td>${safe(book(t.bookId)?.title||"Book")}</td><td>${safe(user(t.userId)?.name||"Member")}</td><td>${t.issue}</td><td>${t.due}</td><td>₹${t.returned?t.finePaid:fine(t)}</td><td>${t.returned?"Returned":fine(t)>0?"Overdue":"Issued"}</td><td>${!t.returned&&staff()?`<button onclick="returnBook('${t.id}')">Return</button>`:"—"}</td></tr>`).join("")||'<tr><td colspan="7">No transactions found.</td></tr>')+
+ `</tbody></table></div></section>`;
+}
+function returnBook(id){
+ const t=db.transactions.find(x=>x.id===id);if(!t||t.returned)return;
+ const amount=fine(t);
+ if(!confirm("Record return? Fine due: ₹"+amount))return;
+ t.returned=true;t.returnDate=today();t.finePaid=amount;
+ book(t.bookId).available++;
+ if(amount)db.fines.push({id:makeId(),transactionId:t.id,amount,date:today(),userId:t.userId});
+ save();showPage("transactions");
+}
+function usersPage(){
+ content.innerHTML=heading("User Management","Registered users and roles")+
+ `<section class="card"><div class="tablebox"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active loans</th><th>Action</th></tr></thead><tbody>`+
+ db.users.map(u=>`<tr><td>${safe(u.name)}</td><td>${safe(u.email)}</td><td>${u.role}</td><td>${db.transactions.filter(t=>t.userId===u.id&&!t.returned).length}</td><td>${current.role==="Admin"&&u.id!==current.id?`<button onclick="changeRole('${u.id}')">Change Role</button>`:"—"}</td></tr>`).join("")+
+ `</tbody></table></div></section>`;
+}
+function changeRole(id){
+ if(current.role!=="Admin")return;
+ const u=user(id),role=prompt("Enter role: Student, Librarian or Admin",u.role);
+ if(["Student","Librarian","Admin"].includes(role)){u.role=role;save();usersPage()}
+}
+function reportsPage(){
+ if(!staff())return;
+ content.innerHTML=heading("Reports","Export library reports as CSV")+
+ `<section class="card"><button onclick="csv('inventory')">Inventory Report</button><button onclick="csv('issued')">Issued Books Report</button><button onclick="csv('returned')">Returned Books Report</button><button onclick="csv('overdue')">Overdue Report</button><button onclick="csv('fines')">Fine Report</button><button onclick="csv('users')">User Report</button></section>`;
+}
+function csv(type){
+ let rows=[];
+ if(type==="inventory")rows=[["Title","Author","ISBN","Category","Total","Available"],...db.books.map(b=>[b.title,b.author,b.isbn,b.category,b.total,b.available])];
+ else if(type==="users")rows=[["Name","Email","Role"],...db.users.map(u=>[u.name,u.email,u.role])];
+ else if(type==="fines")rows=[["Member","Amount","Date"],...db.fines.map(f=>[user(f.userId)?.name,f.amount,f.date])];
+ else{
+  const ts=db.transactions.filter(t=>type==="issued"?!t.returned:type==="returned"?t.returned:!t.returned&&fine(t)>0);
+  rows=[["Book","Member","Issue","Due","Return","Fine"],...ts.map(t=>[book(t.bookId)?.title,user(t.userId)?.name,t.issue,t.due,t.returnDate||"",t.returned?t.finePaid:fine(t)])];
+ }
+ const text=rows.map(r=>r.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(",")).join("\r\n");
+ download(text,type+"_report.csv","text/csv");
+}
+function notificationPage(){
+ const list=db.transactions.filter(t=>!t.returned&&(staff()||t.userId===current.id));
+ content.innerHTML=heading("Due Date Notifications","Check upcoming and overdue books")+
+ `<section class="card"><div class="tablebox"><table><thead><tr><th>Book</th><th>Member</th><th>Due Date</th><th>Status</th><th>Fine</th></tr></thead><tbody>`+
+ (list.map(t=>`<tr><td>${safe(book(t.bookId)?.title||"Book")}</td><td>${safe(user(t.userId)?.name||"Member")}</td><td>${t.due}</td><td>${fine(t)>0?"Overdue":t.due===today()?"Due today":"Upcoming"}</td><td>₹${fine(t)}</td></tr>`).join("")||'<tr><td colspan="5">No active loans.</td></tr>')+
+ `</tbody></table></div><p><small>These are in-app notices. Real email/SMS delivery needs a notification service.</small></p></section>`;
+}
+function profilePage(){
+ content.innerHTML=heading("My Profile","Update your account information")+
+ `<section class="card"><form id="profileForm"><label>Full name</label><input id="profileName" value="${safe(current.name)}" required><label>Email</label><input id="profileEmail" type="email" value="${safe(current.email)}" required><label>New password (optional)</label><input id="profilePassword" type="password" minlength="4"><p>Role: ${current.role}</p><button>Save Profile</button></form><p><small>Demo data is saved in this browser. Do not use real passwords.</small></p></section>`;
+ document.getElementById("profileForm").onsubmit=e=>{
+  e.preventDefault();
+  const em=profileEmail.value.trim().toLowerCase();
+  if(db.users.some(u=>u.id!==current.id&&u.email.toLowerCase()===em)){message("Email already used.");return}
+  current.name=profileName.value.trim();current.email=em;
+  if(profilePassword.value)current.password=profilePassword.value;
+  save();start();showPage("profile");message("Profile updated.");
+ };
+}
+function download(text,name,type){
+ const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");
+ a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);
+}
+function backup(){
+ if(!staff())return;
+ download(JSON.stringify(db,null,2),"library-backup.json","application/json");
+}
+</script>
+</body>
+</html>
+```
